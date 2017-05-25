@@ -38,7 +38,7 @@ typedef struct big_num_s{
 
 #define B_FROMAT_CHAR_2_NUM(x) (((x) == 0  || (x) < '0' || (x) > '9' )? 0 : (x)-'0')
 #define B_FROMAT_NUM_2_CHAR(x) ((x)+'0')
-void b_big_num_dump(big_num_t* a);
+void b_big_num_dump(big_num_t* a, const char* msg);
 big_num_t* b_big_num_add(big_num_t* a, big_num_t*b, big_num_t* r);
 big_num_t* b_big_num_sub(big_num_t* a, big_num_t*b, big_num_t* r);
 big_num_t* b_big_num_mul(big_num_t* a, big_num_t*b, big_num_t* r);
@@ -138,6 +138,15 @@ big_num_t* b_big_num_min(big_num_t* a, big_num_t*b, unsigned int absolute){
 	return a;
 }
 
+// 判断一个大数是否为 0
+unsigned int b_big_num_is_zero(big_num_t* a){
+	if(b_big_num_is_null_ptr(a))return 1;
+	for(unsigned int i = 0; i < a->len; ++i){
+		if(B_FROMAT_CHAR_2_NUM(a->data[i]))return 0;
+	}
+	return 1;
+}
+
 // 反转存储
 static void b_big_num_reverse(big_num_t* big){
 	if(b_big_num_is_null_ptr(big))return;
@@ -201,11 +210,6 @@ big_num_t* b_big_num_init_from_int(big_num_t* a, int num){
 		if(b_big_num_is_null_ptr(big))return 0;
 	}else{
 		b_memset(big->data, big->alloc_len, 0);
-		// for(unsigned int i = 0; i < big->alloc_len; ++i){
-			// big->data[i] = '0';
-		// }
-	printf("\n\nbig: ");
-	b_big_num_dump(big);
 	}
 	big->type = type;
 	n= num;
@@ -223,7 +227,6 @@ big_num_t* b_big_num_init_from_big(big_num_t* src, big_num_t* to){
 	big_num_t* big = to;
 	if(b_big_num_is_null_ptr(big)){
 		big = b_big_num_malloc(src->alloc_len);
-		to = big;
 	}
 	if(b_big_num_is_null_ptr(big))return 0;
 	if(!b_big_num_copy(src, big))return 0;
@@ -246,13 +249,14 @@ void b_big_num_print(big_num_t* big, unsigned int f){
 	for(unsigned int i = 0; i < len; ++i){
 		printf("%d",B_FROMAT_CHAR_2_NUM(big->data[len - i - 1]));
 	}
+	if(!big->len) printf("0");
 	printf("\n");
 }
 
 // 完整的 dump 出大数的数据机构
-void b_big_num_dump(big_num_t* a){
+void b_big_num_dump(big_num_t* a, const char* msg){
 	if(b_big_num_is_null_ptr(a))return;
-	printf("dump big_num_t:\n");
+	printf("dump big_num_t: %s\n",msg);
 	printf("alloc_len:\t%d\n",a->alloc_len);
 	printf("type:\t%d\n",a->type);
 	printf("len:\t%d\n",a->len);
@@ -449,13 +453,6 @@ big_num_t* b_big_num_mul(big_num_t* a, big_num_t*b, big_num_t* r){
 	if(c->alloc_len < (p->len + q->len + 1)){
 		b_big_num_remalloc(c,0);
 	}
-	c->len = c->alloc_len;
-	printf("\n\np: ");
-	b_big_num_dump(p);
-	printf("q: ");
-	b_big_num_dump(q);
-	printf("c: ");
-	b_big_num_dump(c);
 	// 计算部分
 	if(p->len < q->len){
 		big_num_t* pq = p;
@@ -480,24 +477,63 @@ big_num_t* b_big_num_mul(big_num_t* a, big_num_t*b, big_num_t* r){
 	return c;
 }
 
-// 判断一个大数是否为 0
-unsigned int b_big_num_is_zero(big_num_t* a){
-	if(b_big_num_is_null_ptr(a))return 1;
-	for(unsigned int i = 0; i < a->len; ++i){
-		if(B_FROMAT_CHAR_2_NUM(a->data[i]))return 0;
+unsigned int b_big_num_add_int(big_num_t*a, int n){
+	if(b_big_num_is_null_ptr(a))return 0;
+	big_num_t* t = b_big_num_init_from_int(0,n);
+	b_big_num_add(a, t, a);
+	b_big_num_free(t);
+	return 1;
+}
+
+unsigned int b_big_num_sub_int(big_num_t*a, int n){
+	if(b_big_num_is_null_ptr(a))return 0;
+	big_num_t* t = b_big_num_init_from_int(0,n);
+	b_big_num_sub(a, t, a);
+	b_big_num_free(t);
+	return 1;
+}
+
+big_num_t* b_big_num_div(big_num_t* a, big_num_t*b, big_num_t* r, big_num_t* l){
+	if(b_big_num_is_null_ptr(a))return 0;
+	if(b_big_num_is_null_ptr(b))return 0;
+	if(r != 0 && r == l)return 0;
+	big_num_t* c = 0; // 对应的返回整数
+	int atype = a->type;
+	int btype = b->type;
+	big_num_t* t = 0;
+	big_num_t* p = a;
+	big_num_t* q = b;
+	unsigned int c_size = a->alloc_len > b->alloc_len ? a->alloc_len : b->alloc_len;
+	// 整数部分
+	if(!b_big_num_is_null_ptr(r)){
+		if(r == a || r == b){
+			t = b_big_num_init_from_big(r, t);
+			if(r == a) p = t;
+			else q = t;
+		}
+		c = b_big_num_init_from_int(r, 0);
+	}else{
+		c = b_big_num_malloc(c_size + 1);
 	}
-	return 1;
-}
+	if(b_big_num_is_null_ptr(c))return 0;
+	if(c->alloc_len < (c_size)){
+		b_big_num_remalloc(c,0);
+		if(b_big_num_is_null_ptr(c))return 0;
+	}
+	c->type = B_POSITIVE;
+	t = b_big_num_init_from_big(p,0);
+	int f = b_big_num_compare(t,q,1);
+	while(f != COMPARE_ER && f != COMPARE_LT){
+		b_big_num_add_int(c,1);
+		t = b_big_num_sub(t, q, t);
+		f = b_big_num_compare(t,q,1);
+	}
+	if(atype != btype){
+		b_big_num_add_int(c,1);
+		c->type = B_NEGATIVE;
+	}
 
-unsigned int b_big_num_add_int(big_num_t*a, unsigned int n){
-	if(b_big_num_is_null_ptr(a))return 0;
-
-	return 1;
-}
-
-unsigned int b_big_num_sub_int(big_num_t*a, unsigned int n){
-	if(b_big_num_is_null_ptr(a))return 0;
-	return 1;
+	return c;
 }
 /*
 big_num_t* b_big_num_div(big_num_t* a, big_num_t*b, big_num_t* r, big_num_t* l){
