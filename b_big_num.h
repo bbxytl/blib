@@ -57,11 +57,12 @@ big_num_t* b_big_num_malloc(unsigned int alloc_len){
 	big_num_t* big = (big_num_t*)malloc(sizeof(big_num_t));
 	if(!big)return 0;
 	big->alloc_len = alloc_len;
-	big->len = 0;
+	big->len = 1;
 	big->type = B_POSITIVE;
 	big->data = (char*)malloc(big->alloc_len * sizeof(char));
 	if(!big->data)return 0;
 	b_memset(big->data, big->alloc_len, 0);
+	big->data[0] = '0';
 	return big;
 }
 // 重新分配内存大小，默认增长 默认 10 个长度, 长度传 0 使用默认增长 10
@@ -177,6 +178,12 @@ big_num_t* b_big_num_scanf(unsigned int max_len){
 		if(idx >= big->alloc_len)break;
 		scanf("%c", &n);
 	}
+	if(!idx){
+		big->len = 1;
+		big->type = B_POSITIVE;
+		big->data[0] = '0';
+		return big;
+	}
 	big->len = idx;
 	b_big_num_reverse(big);
 	return big;
@@ -214,6 +221,11 @@ big_num_t* b_big_num_init_from_int(big_num_t* a, int num){
 	big->type = type;
 	n= num;
 	len = 0;
+	if(!n){
+		big->type = B_POSITIVE;
+		big->len = 1;
+		big->data[0] = '0';
+	}
 	while(n){
 		big->data[len++] = n % 10 + '0';
 		n /= 10;
@@ -493,6 +505,9 @@ unsigned int b_big_num_sub_int(big_num_t*a, int n){
 	return 1;
 }
 
+// r = a/b
+// l = a%b
+// 返回 r
 big_num_t* b_big_num_div(big_num_t* a, big_num_t*b, big_num_t* r, big_num_t* l){
 	if(b_big_num_is_null_ptr(a))return 0;
 	if(b_big_num_is_null_ptr(b))return 0;
@@ -520,73 +535,48 @@ big_num_t* b_big_num_div(big_num_t* a, big_num_t*b, big_num_t* r, big_num_t* l){
 		b_big_num_remalloc(c,0);
 		if(b_big_num_is_null_ptr(c))return 0;
 	}
+	// 效率低
 	c->type = B_POSITIVE;
 	t = b_big_num_init_from_big(p,0);
+	int ptype = p->type;
+	int qtype = q->type;
+	p->type = q->type = t->type = B_POSITIVE;
 	int f = b_big_num_compare(t,q,1);
 	while(f != COMPARE_ER && f != COMPARE_LT){
 		b_big_num_add_int(c,1);
 		t = b_big_num_sub(t, q, t);
 		f = b_big_num_compare(t,q,1);
 	}
+	p->type = ptype;
+	q->type = qtype;
 	if(atype != btype){
 		b_big_num_add_int(c,1);
 		c->type = B_NEGATIVE;
 	}
-
-	return c;
-}
-/*
-big_num_t* b_big_num_div(big_num_t* a, big_num_t*b, big_num_t* r, big_num_t* l){
-	big_num_t* c = 0;
-	big_num_t* d = 0;
-	if(a->type != b->type){
-		int atype = a->type;
-		int btype = b->type;
-		a->type = B_POSITIVE;
-		b->type = B_POSITIVE;
-		c = b_big_num_div(a,b,r,l);
-
-		a->type = atype;
-		b->type = btype;
-		c->type = a->type == b->type ? B_POSITIVE : B_NEGATIVE;
-	}
-
-	// 正数相乘
-	if(!b_big_num_is_null_ptr(r)){
-		c = r;
-		if(c == a || c == b) return 0;
-	}else{
-		unsigned int c_size = a->alloc_len > b->alloc_len ? a->alloc_len : b->alloc_len;
-		c = b_big_num_malloc(c_size + 1);
-	}
-	if(b_big_num_is_null_ptr(c))return 0;
+	// 求余数
 	if(!b_big_num_is_null_ptr(l)){
-		d = l;
-		if(l == a || l == b) return 0;
-	}else{
-		unsigned int d_size = a->alloc_len > b->alloc_len ? a->alloc_len : b->alloc_len;
-		d = b_big_num_malloc(d_size + 1);
-	}
-	if(b_big_num_is_null_ptr(d))return 0;
-	// 计算
-	int atype = a->type;
-	int btype = b->type;
-	a->type = B_POSITIVE;
-	b->type = B_POSITIVE;
-	big_num_t* t = b_big_num_malloc(c->alloc_len + 1);
-	while(1){
-		t = b_big_num_sub(a, b, t);
-		if(b_big_num_is_zero(t))break;
-		b_big_num_add_one(c);
-		b_big_num_init_from_int(d, 1);
-
+		if(c != l){
+			int ctype = c->type;
+			ptype = p->type;
+			qtype = q->type;
+			c->type = p->type = q->type = B_POSITIVE;
+			if(l->alloc_len < p->len) b_big_num_remalloc(l,p->alloc_len);
+			t = b_big_num_mul(c,q,t);
+			l = b_big_num_sub(p,t,l);
+			p->type = ptype;
+			q->type = qtype;
+			c->type = ctype;
+			l->type = qtype;
+		}else{
+			l->type = B_NEGATIVE;
+			l->len = 0;
+		}
 	}
 
-	a->type = atype;
-	b->type = btype;
+	b_big_num_free(t);
 	return c;
 }
-*/
+
 big_num_t* b_big_num_rem(big_num_t* a, big_num_t*b){
 	// big_num_t* c = b_big_num_div(a,b);
 	// big_num_t* d = b_big_num_mul(b,c);
@@ -597,52 +587,6 @@ big_num_t* b_big_num_rem(big_num_t* a, big_num_t*b){
 	return 0;
 }
 
-
-
-
-
-/*
-void add(int *a, int *b, int *c, int N) {
-    int i, carry = 0;
-    for(i = N - 1; i >= 0; i--) {
-        c[i] = a[i] + b[i] + carry;
-        if(c[i] < STORE_TYPE_INT_DIGIT)
-            carry = 0;
-        else { // 进位
-            c[i] = c[i] - STORE_TYPE_INT_DIGIT;
-            carry = 1;
-        }
-    }
-}
-void sub(int *a, int *b, int *c, int N) {
-    int i, borrow = 0;
-    for(i = N - 1; i >= 0; i--) {
-        c[i] = a[i] - b[i] - borrow;
-        if(c[i] >= 0)
-            borrow = 0;
-        else { // 借位
-            c[i] = c[i] + STORE_TYPE_INT_DIGIT;
-            borrow = 1;
-        }
-    }
-}
-void mul(int *a, int b, int *c, int N) { // b 为乘数
-    int i, tmp, carry = 0;
-    for(i = N - 1; i >=0; i--) {
-        tmp = a[i] * b + carry;
-        c[i] = tmp % STORE_TYPE_INT_DIGIT;
-        carry = tmp / STORE_TYPE_INT_DIGIT;
-    }
-}
-void div(int *a, int b, int *c, int N) { // b 为除数
-    int i, tmp, remain = 0;
-    for(i = 0; i < N; i++) {
-        tmp = a[i] + remain;
-        c[i] = tmp / b;
-        remain = (tmp % b) * STORE_TYPE_INT_DIGIT;
-    }
-}
-*/
 
 #endif // _B_BIG_NUM_H
 
